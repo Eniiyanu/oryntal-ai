@@ -14,6 +14,7 @@ from app.services.auth_service import (
 )
 from sqlalchemy.orm import Session
 from app.services.recommendation_service import recommendation_service
+from app.services.alerts_service import alerts_service
 from fastapi import Depends
 from sqlalchemy.orm import Session
 from app.db import get_db
@@ -110,6 +111,15 @@ async def get_trending_crypto():
 		return {"trending_crypto": trending}
 	except Exception as e:
 		raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/market/stocks")
+async def list_stocks(q: Optional[str] = None, page: int = 1, page_size: int = 20):
+	return await market_data_service.get_stocks(q=q, page=page, page_size=page_size)
+
+
+@api_router.get("/market/crypto")
+async def list_crypto(q: Optional[str] = None, page: int = 1, page_size: int = 20):
+	return await market_data_service.get_crypto(q=q, page=page, page_size=page_size)
 
 
 @api_router.get("/market/profile/{symbol}")
@@ -227,5 +237,11 @@ async def recommendations(symbol: Optional[str] = None, q: Optional[str] = None)
 		pass
 	result = await recommendation_service.recommend(symbol, texts)
 	return result
+
+
+@api_router.get("/alerts")
+async def get_alerts():
+	alerts = await alerts_service.generate()
+	return {"alerts": alerts}
 
 

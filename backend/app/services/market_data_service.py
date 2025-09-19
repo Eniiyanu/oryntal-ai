@@ -183,6 +183,74 @@ class MarketDataService:
             print(f"Error fetching trending crypto: {e}")
             return []
 
+    async def get_stocks(self, q: Optional[str] = None, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
+        """Paginated stocks list using FMP actives/gainers/losers or search."""
+        try:
+            async with httpx.AsyncClient() as client:
+                if q:
+                    url = "https://financialmodelingprep.com/api/v3/search"
+                    params = {"query": q, "limit": page_size, "exchange": "NASDAQ", "apikey": self.fmp_key}
+                    response = await client.get(url, params=params)
+                    data = response.json()
+                    # For each match, fetch quote
+                    symbols = [item.get("symbol") for item in data]
+                else:
+                    url = "https://financialmodelingprep.com/api/v3/stock/actives"
+                    params = {"apikey": self.fmp_key}
+                    response = await client.get(url, params=params)
+                    data = response.json()
+                    symbols = [item.get("ticker") for item in data]
+
+                # Pagination over symbols
+                start = max(0, (page - 1) * page_size)
+                end = start + page_size
+                page_symbols = [s for s in symbols if s][start:end]
+
+                results: List[Dict[str, Any]] = []
+                for sym in page_symbols:
+                    quote = await self.get_stock_quote(sym)
+                    if quote:
+                        results.append(quote)
+                return {"items": results, "total": len(symbols), "page": page, "page_size": page_size}
+        except Exception as e:
+            print(f"Error fetching stocks: {e}")
+            return {"items": [], "total": 0, "page": page, "page_size": page_size}
+
+    async def get_crypto(self, q: Optional[str] = None, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
+        """Paginated crypto list using CoinGecko markets with search filter."""
+        try:
+            async with httpx.AsyncClient() as client:
+                per_page = min(250, page_size)
+                url = "https://api.coingecko.com/api/v3/coins/markets"
+                params = {
+                    "vs_currency": "usd",
+                    "order": "market_cap_desc",
+                    "per_page": per_page,
+                    "page": max(1, page),
+                    "sparkline": False,
+                    "price_change_percentage": "24h"
+                }
+                headers = {}
+                if self.coingecko_key:
+                    headers["x-cg-demo-api-key"] = self.coingecko_key
+                response = await client.get(url, params=params, headers=headers)
+                data = response.json()
+                if q:
+                    data = [d for d in data if q.lower() in (d.get("symbol", "") + d.get("name", "")).lower()]
+                items = [{
+                    "symbol": d.get("symbol", "").upper(),
+                    "name": d.get("name"),
+                    "price": d.get("current_price", 0),
+                    "change_24h": d.get("price_change_percentage_24h", 0),
+                    "market_cap": d.get("market_cap", 0),
+                    "volume_24h": d.get("total_volume", 0),
+                    "image": d.get("image")
+                } for d in data]
+                return {"items": items, "total": len(items), "page": page, "page_size": page_size}
+        except Exception as e:
+            print(f"Error fetching crypto: {e}")
+            return {"items": [], "total": 0, "page": page, "page_size": page_size}
+
     async def get_company_profile(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get company profile using Financial Modeling Prep"""
         try:
